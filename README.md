@@ -2,7 +2,7 @@
 
 A full-stack whiteboard project exploring visual collaboration, real-time communication, and AI-assisted planning. Built incrementally with React, TypeScript, and Node.js.
 
-> **Status:** Early development. The frontend starter, Node.js backend health endpoint, and development tooling are in place. The interactive whiteboard, persistence, collaboration, and AI features are planned.
+> **Status:** Early development. The interactive whiteboard, drawing tools, browser-based persistence, PNG export, Node.js backend health endpoint, and development tooling are in place. Database persistence, real-time collaboration, and AI features remain planned.
 
 ## Goals
 
@@ -15,16 +15,21 @@ A full-stack whiteboard project exploring visual collaboration, real-time commun
 
 ## Current Features
 
-- [x] React, TypeScript, and Vite frontend scaffold.
-- [x] Node.js HTTP backend.
-- [x] `GET /health` health-check endpoint.
+- [x] React, TypeScript, and Vite frontend.
+- [x] Node.js HTTP backend with a `GET /health` endpoint.
 - [x] pnpm workspace for frontend and backend.
-- [x] ESLint and Prettier.
-- [x] Husky pre-commit hook with lint-staged.
+- [x] ESLint, Prettier, and Husky with lint-staged.
 - [x] Frontend and backend build scripts.
-- [ ] Interactive whiteboard canvas.
-- [ ] Sticky notes, drawing, and draggable objects.
-- [ ] Persistent storage.
+- [x] Interactive HTML Canvas whiteboard.
+- [x] Freehand drawing with selectable colours and adjustable stroke thickness.
+- [x] Rectangle drawing tool.
+- [x] Eraser tool.
+- [x] Undo the most recent drawing operation.
+- [x] Clear the canvas.
+- [x] Automatically save and restore drawing history using browser local storage.
+- [x] Export the current canvas as a PNG image.
+- [ ] Sticky notes and draggable objects.
+- [ ] PostgreSQL-backed board persistence.
 - [ ] Real-time collaboration.
 - [ ] AI-assisted planning.
 
@@ -32,11 +37,14 @@ A full-stack whiteboard project exploring visual collaboration, real-time commun
 
 | Area                    | Technology                         | Status            |
 | ----------------------- | ---------------------------------- | ----------------- |
-| Frontend                | React, TypeScript, Vite            | In place          |
+| Frontend                | React 19, TypeScript, Vite         | In place          |
+| Drawing                 | HTML Canvas API                    | In place          |
 | Backend                 | Node.js, TypeScript, native HTTP   | In place          |
 | Package management      | pnpm workspaces                    | In place          |
 | Code quality            | ESLint, Prettier                   | In place          |
 | Git hooks               | Husky, lint-staged                 | In place          |
+| Local persistence       | Browser local storage              | In place          |
+| Image export            | Canvas API, PNG                    | In place          |
 | Database                | PostgreSQL                         | Planned           |
 | Validation              | Zod                                | Planned           |
 | Testing                 | Vitest                             | Planned           |
@@ -52,13 +60,16 @@ Technologies will be introduced when they serve an implemented feature.
 
 ```text
 ai-whiteboard/
-├── .github/                 # Planned workflows and templates
+├── .github/                 # Workflows and templates
 ├── .husky/                  # Git hooks
 ├── backend/
 │   └── src/
 │       └── index.ts         # HTTP server and health endpoint
 ├── frontend/
-│   └── src/                 # React application
+│   └── src/
+│       ├── App.tsx          # Whiteboard interface and interactions
+│       ├── App.css          # Whiteboard styles
+│       └── index.css        # Global styles
 ├── eslint.config.js
 ├── .gitignore
 ├── .prettierignore
@@ -77,6 +88,14 @@ ai-whiteboard/
 - pnpm 12.11.2, as specified by the project.
 - Git.
 
+Check your installed versions:
+
+```bash
+node --version
+pnpm --version
+git --version
+```
+
 ### Installation
 
 ```bash
@@ -91,11 +110,11 @@ pnpm install
 pnpm run dev:frontend
 ```
 
-Open the local URL printed by Vite.
+Open the local URL printed by Vite in your browser. It is typically `http://localhost:5173/`.
 
 ### Start the backend
 
-In a second terminal:
+In a second terminal, run:
 
 ```bash
 pnpm run dev:backend
@@ -118,9 +137,30 @@ Expected response:
 }
 ```
 
+## Using the Whiteboard
+
+1. Start the frontend development server.
+2. Select the **Pen**, **Shape**, or **Eraser** tool.
+3. Choose a colour and adjust the stroke thickness.
+4. Draw on the canvas using a mouse or compatible pointer device.
+5. Use **Undo** to remove the most recent drawing operation.
+6. Use **Clear** to remove all drawings.
+7. Select **Export PNG** to download the current canvas as an image.
+8. Refresh the page to restore drawings saved in browser local storage.
+
+## Data and Persistence
+
+The current implementation stores drawing history in browser local storage.
+
+- Drawings persist across page refreshes in the same browser profile.
+- Undo and Clear changes are also saved.
+- Drawings are not synchronised across browsers or devices.
+- Clearing the browser's site data can delete locally stored drawings.
+- PostgreSQL-backed storage, user accounts, and multi-board management are not yet implemented.
+
 ## Available Commands
 
-Run these from the repository root.
+Run these commands from the repository root.
 
 | Command                   | Purpose                                  |
 | ------------------------- | ---------------------------------------- |
@@ -132,6 +172,14 @@ Run these from the repository root.
 | `pnpm run lint`           | Lint workspace packages                  |
 | `pnpm run format`         | Format project files                     |
 | `pnpm run format:check`   | Check formatting without modifying files |
+
+Run the quality checks before submitting changes:
+
+```bash
+pnpm run format:check
+pnpm run lint
+pnpm run build
+```
 
 ## API
 
@@ -154,11 +202,16 @@ Unknown routes currently return `404 Not Found`.
 
 ### Phase 1 — Whiteboard UI
 
-- [ ] Replace the default starter screen with the whiteboard interface.
+- [x] Replace the default starter screen with the whiteboard interface.
+- [x] Add freehand drawing and rectangle shapes.
+- [x] Add colour selection and adjustable stroke thickness.
+- [x] Add an eraser, Undo, and Clear.
+- [x] Save and restore drawings using browser local storage.
+- [x] Export drawings as PNG.
 - [ ] Create and edit sticky notes.
 - [ ] Move, recolour, and delete objects.
-- [ ] Add basic drawing and shapes.
 - [ ] Improve keyboard accessibility and responsive layouts.
+- [ ] Add automated tests for drawing history and editing operations.
 
 ### Phase 2 — Backend API
 
@@ -172,7 +225,7 @@ Unknown routes currently return `404 Not Found`.
 
 - [ ] Add PostgreSQL.
 - [ ] Design the board and object schema.
-- [ ] Save and load whiteboards.
+- [ ] Save and load whiteboards through the backend.
 - [ ] Handle loading, empty, and error states.
 
 ### Phase 4 — Real-Time Collaboration
@@ -195,4 +248,20 @@ Unknown routes currently return `404 Not Found`.
 - [ ] Introduce automated unit and integration tests.
 - [ ] Add a GitHub Actions workflow.
 - [ ] Run linting and builds on pull requests.
-- [ ]
+- [ ] Document deployment and production configuration.
+- [ ] Add monitoring and error reporting.
+
+## Contributing
+
+Contributions, bug reports, and suggestions are welcome.
+
+Before submitting changes:
+
+1. Review `CONTRIBUTING.md`.
+2. Keep changes focused and easy to review.
+3. Run formatting, lint, and build checks.
+4. Describe the change and relevant testing in your pull request.
+
+## License
+
+No license has been specified yet. Until a license is added to the repository, permission to reuse, modify, or redistribute this project should not be assumed.
