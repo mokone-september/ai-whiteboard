@@ -11,7 +11,7 @@
 
 .topbar {
   position: relative;
-  z-index: 2;
+  z-index: 6;
   display: flex;
   min-height: 70px;
   align-items: center;
@@ -101,6 +101,11 @@
   transition:
     background 150ms ease,
     border-color 150ms ease;
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .button-secondary {
@@ -315,6 +320,7 @@
 
 .drawing-canvas {
   position: absolute;
+  z-index: 1;
   inset: 0;
   display: block;
   width: 100%;
@@ -323,8 +329,148 @@
   touch-action: none;
 }
 
+/* Selection mode for drawings */
+.drawing-canvas.select-mode {
+  cursor: grab;
+  touch-action: none;
+}
+
+.drawing-canvas.select-mode:active {
+  cursor: grabbing;
+}
+
+/* Sticky note cards */
+.sticky-note {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  width: 220px;
+  height: 190px;
+  box-sizing: border-box;
+  flex-direction: column;
+  padding: 10px 12px;
+  overflow: hidden;
+  border: 1px solid rgb(60 50 20 / 12%);
+  border-radius: 4px;
+  color: #343434;
+  box-shadow: 0 5px 14px rgb(20 25 40 / 13%);
+  transition: box-shadow 120ms ease;
+}
+
+/* Highlight the selected sticky note */
+.sticky-note.selected {
+  outline: 2px solid #625bf6;
+  outline-offset: 3px;
+}
+
+.sticky-note:hover,
+.sticky-note:focus-within {
+  z-index: 5;
+  box-shadow: 0 8px 22px rgb(20 25 40 / 20%);
+}
+
+.sticky-note-header {
+  display: flex;
+  min-height: 26px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.sticky-note-header:active {
+  cursor: grabbing;
+}
+
+.sticky-note-grip {
+  color: rgb(50 50 50 / 55%);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.sticky-note-title {
+  flex: 1;
+  color: rgb(50 50 50 / 65%);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.sticky-note-delete {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #484848;
+  font-size: 21px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sticky-note-delete:hover {
+  background: rgb(0 0 0 / 8%);
+}
+
+.sticky-note-text {
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  padding: 2px 0 8px;
+  resize: none;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: #292929;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.sticky-note-text::placeholder {
+  color: rgb(40 40 40 / 48%);
+}
+
+.sticky-note-colors {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-top: 8px;
+  border-top: 1px solid rgb(60 50 20 / 12%);
+}
+
+.sticky-note-color {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  padding: 0;
+  border: 2px solid rgb(0 0 0 / 10%);
+  border-radius: 50%;
+  background: var(--note-color);
+  cursor: pointer;
+}
+
+.sticky-note-color.selected {
+  outline: 2px solid #424242;
+  outline-offset: 2px;
+}
+
+.sticky-note-color:focus-visible,
+.sticky-note-delete:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+/* Empty canvas message */
 .canvas-empty {
   position: absolute;
+  z-index: 2;
   top: 50%;
   left: 50%;
   display: flex;
@@ -384,6 +530,14 @@
   background: #8d85fa;
 }
 
+/* Keyboard accessibility */
+.tool-button:focus-visible,
+.button:focus-visible,
+.color-swatch:focus-visible {
+  outline: 2px solid #625bf6;
+  outline-offset: 3px;
+}
+
 @media (min-width: 1500px) {
   .canvas-area {
     padding: 38px 42px;
@@ -441,6 +595,10 @@
 
   .canvas-shell {
     min-height: 420px;
+  }
+
+  .sticky-note {
+    width: min(220px, calc(100% - 12px));
   }
 
   .canvas-footer {
