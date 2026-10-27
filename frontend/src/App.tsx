@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent } from "react";
 import "./App.css";
 
@@ -456,7 +456,7 @@ function App() {
     setIsDrawing(false);
   }
 
-  function undo() {
+  const undo = useCallback(() => {
     if (strokesRef.current.length === 0) return;
 
     const nextStrokes = strokesRef.current.slice(0, -1);
@@ -468,7 +468,7 @@ function App() {
     setStrokes(nextStrokes);
     setSelectedStrokeIndex(null);
     setIsDrawing(false);
-  }
+  }, []);
 
   function clearCanvas() {
     strokesRef.current = [];
@@ -479,7 +479,7 @@ function App() {
     setIsDrawing(false);
   }
 
-  function selectTool(nextTool: Tool) {
+  const selectTool = useCallback((nextTool: Tool) => {
     activeStrokeRef.current = null;
     strokeDragRef.current = null;
     setIsDrawing(false);
@@ -492,9 +492,9 @@ function App() {
 
     const canvas = canvasRef.current;
     if (canvas) renderCanvas(canvas, strokesRef.current, null);
-  }
+  }, []);
 
-  function addStickyNote() {
+  const addStickyNote = useCallback(() => {
     const shell = canvasShellRef.current;
     if (!shell) return;
 
@@ -513,7 +513,7 @@ function App() {
     setNotes((current) => [...current, note]);
     setSelectedStrokeIndex(null);
     setSelectedNoteId(note.id);
-  }
+  }, [notes.length]);
 
   function updateStickyNote(id: string, text: string) {
     setNotes((current) => current.map((note) => (note.id === id ? { ...note, text } : note)));
@@ -527,11 +527,11 @@ function App() {
     );
   }
 
-  function deleteStickyNote(id: string) {
+  const deleteStickyNote = useCallback((id: string) => {
     setNotes((current) => current.filter((note) => note.id !== id));
     setSelectedNoteId((current) => (current === id ? null : current));
     noteDragRef.current = null;
-  }
+  }, []);
 
   function startNoteDrag(event: PointerEvent<HTMLDivElement>, note: StickyNote) {
     if (event.button !== 0 && event.pointerType === "mouse") return;
@@ -588,7 +588,7 @@ function App() {
     setStrokes(nextStrokes);
   }
 
-  function deleteSelectedObject() {
+  const deleteSelectedObject = useCallback(() => {
     if (selectedStrokeIndex !== null) {
       const nextStrokes = strokesRef.current.filter((_, index) => index !== selectedStrokeIndex);
 
@@ -602,7 +602,76 @@ function App() {
     if (selectedNoteId !== null) {
       deleteStickyNote(selectedNoteId);
     }
-  }
+  }, [selectedStrokeIndex, selectedNoteId, deleteStickyNote]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      const target = event.target;
+
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target instanceof HTMLInputElement ||
+          target instanceof HTMLTextAreaElement ||
+          target instanceof HTMLSelectElement)
+      ) {
+        return;
+      }
+
+      const modifier = event.ctrlKey || event.metaKey;
+      const key = event.key.toLowerCase();
+
+      if (modifier && key === "z") {
+        event.preventDefault();
+        undo();
+        return;
+      }
+
+      if (modifier && key === "s") {
+        event.preventDefault();
+        return;
+      }
+
+      if (event.key === "Escape") {
+        setSelectedStrokeIndex(null);
+        setSelectedNoteId(null);
+        strokeDragRef.current = null;
+        noteDragRef.current = null;
+        return;
+      }
+
+      if (event.key === "Delete" || event.key === "Backspace") {
+        if (selectedStrokeIndex !== null || selectedNoteId !== null) {
+          event.preventDefault();
+          deleteSelectedObject();
+        }
+        return;
+      }
+
+      if (modifier || event.altKey) return;
+
+      switch (key) {
+        case "v":
+          selectTool("select");
+          break;
+        case "p":
+          selectTool("pen");
+          break;
+        case "e":
+          selectTool("eraser");
+          break;
+        case "r":
+          selectTool("rectangle");
+          break;
+        case "n":
+          addStickyNote();
+          break;
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [addStickyNote, deleteSelectedObject, selectedStrokeIndex, selectedNoteId, selectTool, undo]);
 
   function handleColorSelect(swatch: string) {
     setColor(swatch);
