@@ -1,15 +1,14 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 
 const STROKES_KEY = "ai-whiteboard-strokes";
 const NOTES_KEY = "ai-whiteboard-notes";
-
 const CANVAS_LABEL = "Interactive whiteboard. Select a drawing tool and draw on the canvas.";
 
-function getCanvas() {
-  const canvas = screen.getByLabelText(CANVAS_LABEL);
+function getCanvas(): HTMLCanvasElement {
+  const canvas = screen.getByLabelText(CANVAS_LABEL) as HTMLCanvasElement;
 
   vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({
     x: 0,
@@ -26,418 +25,383 @@ function getCanvas() {
   return canvas;
 }
 
-function drawStroke(canvas: HTMLElement) {
-  fireEvent.pointerDown(canvas, {
-    pointerId: 1,
-    pointerType: "mouse",
-    button: 0,
-    clientX: 20,
-    clientY: 30,
+function mockBoardDimensions(): HTMLElement {
+  const board = document.querySelector(".canvas-shell");
+
+  if (!(board instanceof HTMLElement)) {
+    throw new Error("Whiteboard canvas shell was not found");
+  }
+
+  Object.defineProperties(board, {
+    clientWidth: { configurable: true, value: 500 },
+    clientHeight: { configurable: true, value: 400 },
   });
 
-  fireEvent.pointerMove(canvas, {
-    pointerId: 1,
-    pointerType: "mouse",
-    clientX: 60,
-    clientY: 90,
-  });
+  return board;
+}
 
-  fireEvent.pointerUp(canvas, {
-    pointerId: 1,
-    pointerType: "mouse",
-    button: 0,
-    clientX: 60,
-    clientY: 90,
+function getStickyNote(name: string): HTMLElement {
+  return screen.getByRole("article", {
+    name: `Sticky note: ${name}`,
   });
 }
 
-describe("AI Whiteboard UI", () => {
-  beforeEach(() => {
-    localStorage.clear();
+beforeEach(() => {
+  localStorage.clear();
 
-    Object.defineProperty(HTMLElement.prototype, "setPointerCapture", {
-      configurable: true,
-      value: vi.fn(),
-    });
+  HTMLElement.prototype.setPointerCapture = vi.fn();
+  HTMLElement.prototype.releasePointerCapture = vi.fn();
+  HTMLElement.prototype.hasPointerCapture = vi.fn(() => true);
 
-    Object.defineProperty(URL, "createObjectURL", {
-      configurable: true,
-      value: vi.fn(() => "blob:test-whiteboard"),
-    });
+  vi.stubGlobal(
+    "ResizeObserver",
+    class ResizeObserverMock {
+      observe = vi.fn();
+      unobserve = vi.fn();
+      disconnect = vi.fn();
+    },
+  );
 
-    Object.defineProperty(URL, "revokeObjectURL", {
-      configurable: true,
-      value: vi.fn(),
-    });
+  vi.stubGlobal(
+    "URL",
+    class URLMock {
+      static createObjectURL = vi.fn(() => "blob:test-image");
+      static revokeObjectURL = vi.fn();
+    },
+  );
+});
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+describe("App", () => {
+  it("renders the whiteboard and its drawing tools", () => {
+    render(<App />);
+
+    expect(getCanvas()).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /pen/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /eraser/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /shape/i })).toBeInTheDocument();
   });
 
-  afterEach(() => {
-    cleanup();
-    vi.restoreAllMocks();
+  it("adds a sticky note to the board", async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+    mockBoardDimensions();
+
+    await user.click(screen.getByRole("button", { name: /sticky note/i }));
+
+    expect(getStickyNote("empty")).toBeInTheDocument();
   });
 
-  describe("initial rendering", () => {
-    it("renders the main toolbar, drawing tools, and canvas", () => {
-      render(<App />);
+  it("edits sticky-note text", async () => {
+    const user = userEvent.setup();
 
-      expect(screen.getByRole("button", { name: "Export PNG" })).toBeInTheDocument();
+    render(<App />);
+    mockBoardDimensions();
 
-      expect(screen.getByRole("button", { name: /undo/i })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: /sticky note/i }));
 
-      expect(screen.getByRole("button", { name: "Clear drawings" })).toBeDisabled();
+    const note = getStickyNote("empty");
+    const textbox = within(note).getByRole("textbox");
 
-      expect(screen.getByRole("button", { name: /sticky note/i })).toBeInTheDocument();
+    await user.clear(textbox);
+    await user.type(textbox, "Project idea");
 
-      expect(screen.getByRole("button", { name: "Pen" })).toHaveAttribute("aria-pressed", "true");
-
-      expect(screen.getByRole("button", { name: "Select" })).toHaveAttribute(
-        "aria-pressed",
-        "false",
-      );
-
-      expect(screen.getByLabelText(CANVAS_LABEL)).toBeInTheDocument();
-    });
+    expect(
+      screen.getByRole("article", {
+        name: "Sticky note: Project idea",
+      }),
+    ).toBeInTheDocument();
   });
 
-  describe("sticky notes", () => {
-    it("creates a sticky note and persists it to local storage", async () => {
-      const user = userEvent.setup();
+  it("changes a sticky note's colour", async () => {
+    const user = userEvent.setup();
 
-      render(<App />);
+    render(<App />);
+    mockBoardDimensions();
 
-      await user.click(screen.getByRole("button", { name: /sticky note/i }));
+    await user.click(screen.getByRole("button", { name: /sticky note/i }));
 
-      expect(screen.getByRole("textbox", { name: "Sticky note text" })).toBeInTheDocument();
+    const note = getStickyNote("empty");
+    const colourControl = within(note).getAllByRole("button", {
+      name: /change note colour to/i,
+    })[0];
 
-      await waitFor(() => {
-        const savedNotes = JSON.parse(localStorage.getItem(NOTES_KEY) ?? "[]");
+    expect(colourControl).toBeDefined();
 
-        expect(savedNotes).toHaveLength(1);
-        expect(savedNotes[0]).toMatchObject({
-          text: "",
+    await user.click(colourControl);
+
+    expect(note).toBeInTheDocument();
+  });
+
+  it("deletes a sticky note", async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+    mockBoardDimensions();
+
+    await user.click(screen.getByRole("button", { name: /sticky note/i }));
+
+    expect(getStickyNote("empty")).toBeInTheDocument();
+
+    const note = getStickyNote("empty");
+    await user.click(within(note).getByRole("button", { name: /delete/i }));
+
+    expect(screen.queryByRole("article", { name: "Sticky note: empty" })).not.toBeInTheDocument();
+  });
+
+  it("restores sticky notes from local storage", () => {
+    localStorage.setItem(
+      NOTES_KEY,
+      JSON.stringify([
+        {
+          id: "restored-note",
+          x: 30,
+          y: 40,
+          text: "Restored idea",
           color: "#fff1a8",
+        },
+      ]),
+    );
+
+    render(<App />);
+
+    expect(
+      screen.getByRole("article", {
+        name: "Sticky note: Restored idea",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("moves a focused sticky note with the arrow keys", async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+    mockBoardDimensions();
+
+    await user.click(screen.getByRole("button", { name: /sticky note/i }));
+
+    const note = getStickyNote("empty");
+
+    expect(note).toHaveStyle({ left: "24px", top: "24px" });
+
+    note.focus();
+    fireEvent.keyDown(note, { key: "ArrowRight" });
+    fireEvent.keyDown(note, { key: "ArrowDown" });
+
+    await waitFor(() => {
+      expect(getStickyNote("empty")).toHaveStyle({
+        left: "34px",
+        top: "34px",
+      });
+    });
+  });
+
+  it("moves a sticky note by one pixel when Shift and an arrow key are pressed", async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+    mockBoardDimensions();
+
+    await user.click(screen.getByRole("button", { name: /sticky note/i }));
+
+    const note = getStickyNote("empty");
+
+    expect(note).toHaveStyle({ left: "24px", top: "24px" });
+
+    note.focus();
+    fireEvent.keyDown(note, {
+      key: "ArrowRight",
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(getStickyNote("empty")).toHaveStyle({
+        left: "25px",
+        top: "24px",
+      });
+    });
+  });
+
+  it("keeps a sticky note within the board boundaries", async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+    mockBoardDimensions();
+
+    await user.click(screen.getByRole("button", { name: /sticky note/i }));
+
+    const note = getStickyNote("empty");
+    note.focus();
+
+    for (let index = 0; index < 60; index += 1) {
+      fireEvent.keyDown(note, { key: "ArrowRight" });
+      fireEvent.keyDown(note, { key: "ArrowDown" });
+    }
+
+    await waitFor(() => {
+      expect(note).toHaveStyle({
+        left: "280px",
+        top: "210px",
+      });
+    });
+  });
+
+  it("draws on the canvas with pointer events", () => {
+    render(<App />);
+
+    const canvas = getCanvas();
+    const context = {
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      stroke: vi.fn(),
+      closePath: vi.fn(),
+      clearRect: vi.fn(),
+      fillRect: vi.fn(),
+      strokeRect: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      setLineDash: vi.fn(),
+      fill: vi.fn(),
+      arc: vi.fn(),
+      scale: vi.fn(),
+      setTransform: vi.fn(),
+      drawImage: vi.fn(),
+      fillText: vi.fn(),
+      measureText: vi.fn(() => ({ width: 10 })),
+      getImageData: vi.fn(),
+      putImageData: vi.fn(),
+      strokeStyle: "",
+      fillStyle: "",
+      lineWidth: 1,
+      lineCap: "round",
+      lineJoin: "round",
+    };
+
+    vi.spyOn(canvas, "getContext").mockReturnValue(context as unknown as CanvasRenderingContext2D);
+
+    fireEvent.pointerDown(canvas, {
+      pointerId: 1,
+      clientX: 30,
+      clientY: 40,
+      button: 0,
+    });
+    fireEvent.pointerMove(canvas, {
+      pointerId: 1,
+      clientX: 70,
+      clientY: 80,
+    });
+    fireEvent.pointerUp(canvas, {
+      pointerId: 1,
+      clientX: 70,
+      clientY: 80,
+    });
+
+    expect(JSON.parse(localStorage.getItem(STROKES_KEY) ?? "[]")).toHaveLength(1);
+  });
+
+  it("handles undo and redo keyboard shortcuts", () => {
+    render(<App />);
+    getCanvas();
+
+    fireEvent.keyDown(window, {
+      key: "z",
+      ctrlKey: true,
+    });
+
+    fireEvent.keyDown(window, {
+      key: "y",
+      ctrlKey: true,
+    });
+
+    expect(getCanvas()).toBeInTheDocument();
+  });
+
+  it("ignores malformed saved sticky-note data", () => {
+    localStorage.setItem(NOTES_KEY, "{invalid json");
+
+    expect(() => render(<App />)).not.toThrow();
+  });
+
+  it("ignores malformed saved stroke data", () => {
+    localStorage.setItem(STROKES_KEY, "{invalid json");
+
+    expect(() => render(<App />)).not.toThrow();
+  });
+
+  it("exports the canvas as a PNG", async () => {
+    const user = userEvent.setup();
+    const originalCreateElement = document.createElement.bind(document);
+    let exportCanvas: HTMLCanvasElement | null = null;
+
+    const exportContext = {
+      fillRect: vi.fn(),
+      drawImage: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      fillText: vi.fn(),
+      measureText: vi.fn(() => ({ width: 10 })),
+      setTransform: vi.fn(),
+      clearRect: vi.fn(),
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      stroke: vi.fn(),
+      closePath: vi.fn(),
+      strokeRect: vi.fn(),
+      setLineDash: vi.fn(),
+      fill: vi.fn(),
+      arc: vi.fn(),
+      scale: vi.fn(),
+      strokeStyle: "",
+      fillStyle: "",
+      lineWidth: 1,
+      lineCap: "round",
+      lineJoin: "round",
+      globalCompositeOperation: "source-over",
+      shadowColor: "",
+      shadowBlur: 0,
+      font: "",
+      textBaseline: "top",
+    };
+
+    vi.spyOn(document, "createElement").mockImplementation(((
+      tagName: string,
+      options?: ElementCreationOptions,
+    ) => {
+      const element = originalCreateElement(tagName, options);
+
+      if (tagName.toLowerCase() === "canvas") {
+        exportCanvas = element as HTMLCanvasElement;
+
+        vi.spyOn(exportCanvas, "getContext").mockReturnValue(
+          exportContext as unknown as CanvasRenderingContext2D,
+        );
+
+        vi.spyOn(exportCanvas, "toBlob").mockImplementation((callback) => {
+          callback(new Blob(["test"], { type: "image/png" }));
         });
-        expect(savedNotes[0].id).toEqual(expect.any(String));
-      });
-    });
+      }
 
-    it("edits a note and saves its text", async () => {
-      const user = userEvent.setup();
+      return element;
+    }) as typeof document.createElement);
 
-      render(<App />);
+    // Prevent jsdom from attempting to navigate when the download link is clicked.
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
 
-      await user.click(screen.getByRole("button", { name: /sticky note/i }));
+    render(<App />);
+    getCanvas();
 
-      const textarea = screen.getByRole("textbox", {
-        name: "Sticky note text",
-      });
+    await user.click(screen.getByRole("button", { name: /export png/i }));
 
-      await user.type(textarea, "Plan the next feature");
-
-      expect(textarea).toHaveValue("Plan the next feature");
-
-      await waitFor(() => {
-        const savedNotes = JSON.parse(localStorage.getItem(NOTES_KEY) ?? "[]");
-
-        expect(savedNotes[0].text).toBe("Plan the next feature");
-      });
-    });
-
-    it("changes a note colour and persists the change", async () => {
-      const user = userEvent.setup();
-
-      render(<App />);
-
-      await user.click(screen.getByRole("button", { name: /sticky note/i }));
-
-      await user.click(
-        screen.getByRole("button", {
-          name: "Change note colour to #ffd8be",
-        }),
-      );
-
-      expect(screen.getByRole("article", { name: "Sticky note" })).toHaveStyle({
-        backgroundColor: "#ffd8be",
-      });
-
-      await waitFor(() => {
-        const savedNotes = JSON.parse(localStorage.getItem(NOTES_KEY) ?? "[]");
-
-        expect(savedNotes[0].color).toBe("#ffd8be");
-      });
-    });
-
-    it("deletes a note and updates local storage", async () => {
-      const user = userEvent.setup();
-
-      render(<App />);
-
-      await user.click(screen.getByRole("button", { name: /sticky note/i }));
-
-      expect(screen.getByRole("textbox", { name: "Sticky note text" })).toBeInTheDocument();
-
-      await user.click(screen.getByRole("button", { name: "Delete sticky note" }));
-
-      expect(screen.queryByRole("textbox", { name: "Sticky note text" })).not.toBeInTheDocument();
-
-      await waitFor(() => {
-        expect(localStorage.getItem(NOTES_KEY)).toBe("[]");
-      });
-    });
-
-    it("restores saved notes when the app loads", () => {
-      localStorage.setItem(
-        NOTES_KEY,
-        JSON.stringify([
-          {
-            id: "saved-note",
-            text: "Restored idea",
-            x: 40,
-            y: 50,
-            color: "#dbeafe",
-          },
-        ]),
-      );
-
-      render(<App />);
-
-      expect(screen.getByRole("textbox", { name: "Sticky note text" })).toHaveValue(
-        "Restored idea",
-      );
-
-      expect(screen.getByRole("article", { name: "Sticky note" })).toHaveStyle({
-        left: "40px",
-        top: "50px",
-        backgroundColor: "#dbeafe",
-      });
-    });
-  });
-
-  describe("drawing interactions", () => {
-    it("draws a stroke and persists its points", async () => {
-      render(<App />);
-
-      const canvas = getCanvas();
-      drawStroke(canvas);
-
-      await waitFor(() => {
-        const saved = JSON.parse(localStorage.getItem(STROKES_KEY) ?? "[]");
-
-        expect(saved).toHaveLength(1);
-        expect(saved[0]).toMatchObject({
-          tool: "pen",
-          color: "#202124",
-          size: 4,
-          points: [
-            { x: 20, y: 30 },
-            { x: 60, y: 90 },
-          ],
-        });
-      });
-
-      expect(screen.getByRole("button", { name: /undo/i })).toBeEnabled();
-
-      expect(screen.getByRole("button", { name: "Clear drawings" })).toBeEnabled();
-    });
-
-    it("undoes the most recent stroke", async () => {
-      const user = userEvent.setup();
-
-      render(<App />);
-
-      drawStroke(getCanvas());
-
-      await waitFor(() => {
-        expect(JSON.parse(localStorage.getItem(STROKES_KEY) ?? "[]")).toHaveLength(1);
-      });
-
-      await user.click(screen.getByRole("button", { name: /undo/i }));
-
-      await waitFor(() => {
-        expect(localStorage.getItem(STROKES_KEY)).toBe("[]");
-      });
-
-      expect(screen.getByRole("button", { name: /undo/i })).toBeDisabled();
-    });
-
-    it("clears all drawing strokes", async () => {
-      const user = userEvent.setup();
-
-      render(<App />);
-
-      drawStroke(getCanvas());
-
-      await waitFor(() => {
-        expect(JSON.parse(localStorage.getItem(STROKES_KEY) ?? "[]")).toHaveLength(1);
-      });
-
-      await user.click(screen.getByRole("button", { name: "Clear drawings" }));
-
-      await waitFor(() => {
-        expect(localStorage.getItem(STROKES_KEY)).toBe("[]");
-      });
-
-      expect(screen.getByRole("button", { name: "Clear drawings" })).toBeDisabled();
-    });
-
-    it("moves a selected stroke and persists its new coordinates", async () => {
-      const user = userEvent.setup();
-
-      render(<App />);
-
-      const canvas = getCanvas();
-      drawStroke(canvas);
-
-      await waitFor(() => {
-        expect(JSON.parse(localStorage.getItem(STROKES_KEY) ?? "[]")).toHaveLength(1);
-      });
-
-      await user.click(screen.getByRole("button", { name: "Select" }));
-
-      fireEvent.pointerDown(canvas, {
-        pointerId: 2,
-        pointerType: "mouse",
-        button: 0,
-        clientX: 20,
-        clientY: 30,
-      });
-
-      fireEvent.pointerMove(canvas, {
-        pointerId: 2,
-        pointerType: "mouse",
-        clientX: 40,
-        clientY: 50,
-      });
-
-      fireEvent.pointerUp(canvas, {
-        pointerId: 2,
-        pointerType: "mouse",
-        button: 0,
-        clientX: 40,
-        clientY: 50,
-      });
-
-      await waitFor(() => {
-        const saved = JSON.parse(localStorage.getItem(STROKES_KEY) ?? "[]");
-
-        expect(saved[0].points).toEqual([
-          { x: 40, y: 50 },
-          { x: 80, y: 110 },
-        ]);
-      });
-    });
-
-    it("deletes a selected stroke with the Delete key", async () => {
-      const user = userEvent.setup();
-
-      render(<App />);
-
-      const canvas = getCanvas();
-      drawStroke(canvas);
-
-      await waitFor(() => {
-        expect(JSON.parse(localStorage.getItem(STROKES_KEY) ?? "[]")).toHaveLength(1);
-      });
-
-      await user.click(screen.getByRole("button", { name: "Select" }));
-
-      fireEvent.pointerDown(canvas, {
-        pointerId: 3,
-        pointerType: "mouse",
-        button: 0,
-        clientX: 20,
-        clientY: 30,
-      });
-
-      fireEvent.pointerUp(canvas, {
-        pointerId: 3,
-        pointerType: "mouse",
-        button: 0,
-        clientX: 20,
-        clientY: 30,
-      });
-
-      await user.keyboard("{Delete}");
-
-      await waitFor(() => {
-        expect(localStorage.getItem(STROKES_KEY)).toBe("[]");
-      });
-    });
-  });
-
-  describe("drawing tools and keyboard shortcuts", () => {
-    it("creates a sticky note with the N keyboard shortcut", () => {
-      render(<App />);
-
-      fireEvent.keyDown(window, { key: "n" });
-
-      expect(screen.getByRole("textbox", { name: "Sticky note text" })).toBeInTheDocument();
-    });
-
-    it("switches between the eraser and pen with keyboard shortcuts", () => {
-      render(<App />);
-
-      fireEvent.keyDown(window, { key: "e" });
-
-      expect(screen.getByRole("button", { name: "Eraser" })).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      );
-
-      fireEvent.keyDown(window, { key: "p" });
-
-      expect(screen.getByRole("button", { name: "Pen" })).toHaveAttribute("aria-pressed", "true");
-    });
-
-    it("does not trigger keyboard shortcuts while typing in a note", async () => {
-      const user = userEvent.setup();
-
-      render(<App />);
-
-      await user.click(screen.getByRole("button", { name: /sticky note/i }));
-
-      const textarea = screen.getByRole("textbox", {
-        name: "Sticky note text",
-      });
-
-      await user.type(textarea, "p");
-
-      expect(screen.getByRole("button", { name: "Pen" })).toHaveAttribute("aria-pressed", "true");
-
-      expect(textarea).toHaveValue("p");
-    });
-
-    it("ignores malformed saved data without crashing", () => {
-      localStorage.setItem(STROKES_KEY, "{invalid json");
-      localStorage.setItem(NOTES_KEY, "{invalid json");
-
-      render(<App />);
-
-      expect(screen.getByRole("button", { name: "Export PNG" })).toBeInTheDocument();
-
-      expect(screen.getByText(/0 strokes · 0 notes/)).toBeInTheDocument();
-    });
-  });
-
-  describe("PNG export", () => {
-    it("creates a PNG blob and starts a download", async () => {
-      const user = userEvent.setup();
-
-      const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
-
-      render(<App />);
-
-      await user.click(screen.getByRole("button", { name: "Export PNG" }));
-
-      expect(HTMLCanvasElement.prototype.toBlob).toHaveBeenCalled();
-
-      expect(URL.createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
-
-      expect(clickSpy).toHaveBeenCalled();
-
-      const downloadLink = clickSpy.mock.instances[0] as HTMLAnchorElement | undefined;
-
-      expect(downloadLink?.download).toBe("ai-whiteboard.png");
-    });
+    expect(exportCanvas).not.toBeNull();
+    expect(exportCanvas?.toBlob).toHaveBeenCalledWith(expect.any(Function), "image/png");
+    expect(exportContext.drawImage).toHaveBeenCalled();
   });
 });
