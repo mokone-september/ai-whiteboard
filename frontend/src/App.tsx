@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CSSProperties, PointerEvent } from "react";
+import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
 import "./App.css";
 
 type Tool = "select" | "pen" | "eraser" | "rectangle";
@@ -246,6 +246,7 @@ function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasShellRef = useRef<HTMLDivElement>(null);
   const strokesRef = useRef<Stroke[]>([]);
+  const redoStackRef = useRef<Stroke[]>([]);
   const activeStrokeRef = useRef<Stroke | null>(null);
   const noteDragRef = useRef<NoteDrag | null>(null);
   const strokeDragRef = useRef<StrokeDrag | null>(null);
@@ -451,15 +452,21 @@ function App() {
     const nextStrokes = [...strokesRef.current, activeStroke];
 
     strokesRef.current = nextStrokes;
+    redoStackRef.current = [];
     activeStrokeRef.current = null;
     setStrokes(nextStrokes);
     setIsDrawing(false);
   }
 
   const undo = useCallback(() => {
-    if (strokesRef.current.length === 0) return;
+    const currentStrokes = strokesRef.current;
+    if (currentStrokes.length === 0) return;
 
-    const nextStrokes = strokesRef.current.slice(0, -1);
+    const removedStroke = currentStrokes[currentStrokes.length - 1];
+    if (!removedStroke) return;
+
+    redoStackRef.current = [...redoStackRef.current, removedStroke];
+    const nextStrokes = currentStrokes.slice(0, -1);
 
     strokesRef.current = nextStrokes;
     activeStrokeRef.current = null;
@@ -470,7 +477,26 @@ function App() {
     setIsDrawing(false);
   }, []);
 
+  const redo = useCallback(() => {
+    const redoStack = redoStackRef.current;
+    if (redoStack.length === 0) return;
+
+    const restoredStroke = redoStack[redoStack.length - 1];
+    if (!restoredStroke) return;
+
+    redoStackRef.current = redoStack.slice(0, -1);
+    const nextStrokes = [...strokesRef.current, restoredStroke];
+    strokesRef.current = nextStrokes;
+    activeStrokeRef.current = null;
+    strokeDragRef.current = null;
+
+    setStrokes(nextStrokes);
+    setSelectedStrokeIndex(null);
+    setIsDrawing(false);
+  }, []);
+
   function clearCanvas() {
+    redoStackRef.current = [];
     strokesRef.current = [];
     activeStrokeRef.current = null;
     strokeDragRef.current = null;
@@ -557,6 +583,55 @@ function App() {
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
+  function handleNoteKeyDown(event: KeyboardEvent<HTMLElement>, note: StickyNote) {
+    // Don't intercept keyboard input from the textarea or note buttons.
+    if (event.target !== event.currentTarget) return;
+
+    let deltaX = 0;
+    let deltaY = 0;
+
+    switch (event.key) {
+      case "ArrowLeft":
+        deltaX = -1;
+        break;
+      case "ArrowRight":
+        deltaX = 1;
+        break;
+      case "ArrowUp":
+        deltaY = -1;
+        break;
+      case "ArrowDown":
+        deltaY = 1;
+        break;
+      default:
+        return;
+    }
+
+    const shell = canvasShellRef.current;
+    if (!shell) return;
+
+    event.preventDefault();
+
+    const step = event.shiftKey ? 1 : 10;
+    const maxX = Math.max(0, shell.clientWidth - NOTE_WIDTH);
+    const maxY = Math.max(0, shell.clientHeight - NOTE_HEIGHT);
+
+    setNotes((current) =>
+      current.map((currentNote) =>
+        currentNote.id === note.id
+          ? {
+              ...currentNote,
+              x: Math.min(Math.max(0, currentNote.x + deltaX * step), maxX),
+              y: Math.min(Math.max(0, currentNote.y + deltaY * step), maxY),
+            }
+          : currentNote,
+      ),
+    );
+
+    setSelectedNoteId(note.id);
+    setSelectedStrokeIndex(null);
+  }
+
   function handleNoteDrag(event: PointerEvent<HTMLDivElement>) {
     const drag = noteDragRef.current;
     const shell = canvasShellRef.current;
@@ -623,7 +698,17 @@ function App() {
 
       if (modifier && key === "z") {
         event.preventDefault();
-        undo();
+        if (event.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+        return;
+      }
+
+      if (modifier && key === "y") {
+        event.preventDefault();
+        redo();
         return;
       }
 
@@ -671,7 +756,15 @@ function App() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [addStickyNote, deleteSelectedObject, selectedStrokeIndex, selectedNoteId, selectTool, undo]);
+  }, [
+    addStickyNote,
+    deleteSelectedObject,
+    selectedStrokeIndex,
+    selectedNoteId,
+    selectTool,
+    undo,
+    redo,
+  ]);
 
   function handleColorSelect(swatch: string) {
     setColor(swatch);
@@ -927,6 +1020,7 @@ function App() {
             {notes.map((note) => (
               <article
                 key={note.id}
+                tabIndex={0}
                 className={`sticky-note ${selectedNoteId === note.id ? "selected" : ""}`}
                 style={
                   {
@@ -935,13 +1029,18 @@ function App() {
                     backgroundColor: note.color,
                   } as CSSProperties
                 }
+                onFocus={() => {
+                  setSelectedNoteId(note.id);
+                  setSelectedStrokeIndex(null);
+                }}
+                onKeyDown={(event) => handleNoteKeyDown(event, note)}
                 onPointerDown={(event) => {
                   if (tool === "select" && event.target === event.currentTarget) {
                     setSelectedNoteId(note.id);
                     setSelectedStrokeIndex(null);
                   }
                 }}
-                aria-label="Sticky note"
+                aria-label={`Sticky note: ${note.text.trim() || "empty"}`}
               >
                 <div
                   className="sticky-note-header"
