@@ -60,7 +60,10 @@ ai-whiteboard/
 ├── .husky/                  # Git hooks
 ├── backend/
 │   └── src/
-│       └── index.ts         # HTTP server and health endpoint
+│       ├── index.ts         # Starts the API server
+│       ├── board.ts         # Board types, validation, and creation
+│       ├── server.ts        # HTTP routes and error handling
+│       └── server.test.ts   # Backend API tests
 ├── frontend/
 │   └── src/
 │       ├── App.tsx          # Whiteboard UI and interactions
@@ -265,10 +268,14 @@ Unknown routes currently return `404 Not Found`.
 
 - [x] Create a Node.js HTTP server.
 - [x] Add a health endpoint.
-- [ ] Design REST endpoints for boards and board objects.
-- [ ] Validate incoming requests.
-- [ ] Standardise error responses.
-- [ ] Add API tests.
+- [x] Implement REST endpoints to create, list, retrieve, update, and delete boards.
+- [x] Validate incoming board data and request content types.
+- [x] Limit request bodies and return consistent error responses.
+- [x] Add automated API tests for successful requests and error cases.
+
+**Current limitation:** Boards are stored in memory, so they are lost when the
+backend restarts. The frontend still uses local storage and is not yet
+integrated with the backend API.
 
 ### Phase 3 — Persistent storage
 

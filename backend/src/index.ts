@@ -1,18 +1,13 @@
-import { createServer } from "node:http";
+import { createAppServer } from "./server.js";
 
-const host = "127.0.0.1";
+const host = process.env.HOST ?? "127.0.0.1";
 const port = Number(process.env.PORT ?? 3000);
 
-const server = createServer((request, response) => {
-  if (request.url === "/health" && request.method === "GET") {
-    response.writeHead(200, { "Content-Type": "application/json" });
-    response.end(JSON.stringify({ status: "ok", service: "ai-whiteboard-backend" }));
-    return;
-  }
+if (!Number.isInteger(port) || port < 0 || port > 65535) {
+  throw new Error("PORT must be an integer between 0 and 65535.");
+}
 
-  response.writeHead(404, { "Content-Type": "application/json" });
-  response.end(JSON.stringify({ error: "Not found" }));
-});
+const server = createAppServer();
 
 server.listen(port, host, () => {
   console.log(`AI Whiteboard API running at http://${host}:${port}`);

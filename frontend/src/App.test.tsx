@@ -208,7 +208,7 @@ describe("App", () => {
 
     expect(getCanvas()).toBeInTheDocument();
 
-    expect(screen.getByRole("button", { name: "Select", exact: true })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Select$/ })).toBeInTheDocument();
 
     expect(screen.getByRole("button", { name: /pen/i })).toBeInTheDocument();
 
@@ -361,7 +361,7 @@ describe("App", () => {
     const [initialStroke] = await waitForSavedStrokes(1);
     const before = initialStroke.points.map((point) => ({ ...point }));
 
-    await user.click(screen.getByRole("button", { name: "Select", exact: true }));
+    await user.click(screen.getByRole("button", { name: /^Select$/ }));
 
     const canvas = getCanvas();
 
@@ -401,7 +401,7 @@ describe("App", () => {
     await drawStroke(user);
     await waitForSavedStrokes(1);
 
-    await user.click(screen.getByRole("button", { name: "Select", exact: true }));
+    await user.click(screen.getByRole("button", { name: /^Select$/ }));
 
     const canvas = getCanvas();
 

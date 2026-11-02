@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent } from "react";
 import "./App.css";
 
 type Tool = "select" | "pen" | "eraser" | "rectangle";
@@ -583,7 +583,7 @@ function App() {
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
-  function handleNoteKeyDown(event: KeyboardEvent<HTMLElement>, note: StickyNote) {
+  function handleNoteKeyDown(event: ReactKeyboardEvent<HTMLElement>, note: StickyNote) {
     // Don't intercept keyboard input from the textarea or note buttons.
     if (event.target !== event.currentTarget) return;
 
